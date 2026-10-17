@@ -1,0 +1,63 @@
+name: Build Shree Glass Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform files
+        shell: bash
+        run: |
+          cp pubspec.yaml "$RUNNER_TEMP/shree-glass-pubspec.yaml"
+          flutter create --platforms=android --org com.shreeglass --project-name shree_glass --no-pub .
+          cp "$RUNNER_TEMP/shree-glass-pubspec.yaml" pubspec.yaml
+          if [ -f android/app/src/main/AndroidManifest.xml ]; then
+            sed -i 's/android:label="shree_glass"/android:label="Shree Glass Hardware"/' android/app/src/main/AndroidManifest.xml
+          fi
+
+      - name: Remove obsolete Flutter template test
+        run: rm -f test/widget_test.dart
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart source
+        # Informational lints (for example deprecated withOpacity) should not block APK builds.
+        # Analyzer errors and warnings still fail this step.
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shree-glass-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
